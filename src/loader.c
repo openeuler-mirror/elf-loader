@@ -3,7 +3,9 @@
 #include "z_utils.h"
 #include "z_elf.h"
 
-#define PAGE_SIZE	4096
+// PAGE_SIZE is now defined in Makefile
+// #define PAGE_SIZE	4096
+
 #define ALIGN		(PAGE_SIZE - 1)
 #define ROUND_PG(x)	(((x) + (ALIGN)) & ~(ALIGN))
 #define TRUNC_PG(x)	((x) & ~(ALIGN))
