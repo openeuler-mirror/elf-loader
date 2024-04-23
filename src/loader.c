@@ -52,7 +52,7 @@ static unsigned long loadelf_anon(int fd, Elf_Ehdr *ehdr, Elf_Phdr *phdr)
 
 	/* For dynamic ELF let the kernel chose the address. */	
 	hint = dyn ? NULL : (void *)minva;
-	flags = dyn ? 0 : MAP_FIXED;
+	flags = dyn ? 0 : MAP_FIXED_NOREPLACE;
 	flags |= (MAP_PRIVATE | MAP_ANONYMOUS);
 
 	/* Check that we can hold the whole image. */
@@ -61,7 +61,7 @@ static unsigned long loadelf_anon(int fd, Elf_Ehdr *ehdr, Elf_Phdr *phdr)
 		return -1;
 	z_munmap(base, maxva - minva);
 
-	flags = MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE;
+	flags = MAP_FIXED_NOREPLACE | MAP_ANONYMOUS | MAP_PRIVATE;
 	/* Now map each segment separately in precalculated address. */
 	for (iter = phdr; iter < &phdr[ehdr->e_phnum]; iter++) {
 		unsigned long off, start;
