@@ -2,6 +2,7 @@
 #include "z_syscalls.h"
 #include "z_utils.h"
 #include "z_elf.h"
+#include "z_epkg.h"
 
 // PAGE_SIZE is now defined in Makefile
 // #define PAGE_SIZE	4096
@@ -118,6 +119,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	if (argc < 2)
 		z_errx(1, "no input file");
 	file = argv[1];
+	mount_epkg_root(argv[1]);
 
 	for (i = 0;; i++, ehdr++) {
 		/* Open file, read and than check ELF header.*/
