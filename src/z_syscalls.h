@@ -22,5 +22,9 @@ void	*z_mmap(void *addr, size_t length, int prot,
 int	z_munmap(void *addr, size_t length);
 int	z_mprotect(void *addr, size_t length, int prot);
 int	*z_perrno(void);
+int	z_unshare(int flags);
+int	z_mount(const char *source, const char *target,
+		const char *filesystemtype, unsigned long mountflags,
+		const void *data);
 
 #endif /* Z_SYSCALLS_H */

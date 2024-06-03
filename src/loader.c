@@ -15,6 +15,16 @@
 			 (((x) & PF_X) ? PROT_EXEC : 0))
 #define LOAD_ERR	((unsigned long)-1)
 
+char **z_environ;
+
+// these will be replaced to real osroot and app path
+static char epkg_env_osroot[] = "{{SOURCE_ENV_DIR LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}";
+static char target_elf_path[] = "{{TARGET_ELF_PATH LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}";
+
+// replaced for debug
+/* static char epkg_env_osroot[] = "/mnt/debian\0DIR LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}"; */
+/* static char target_elf_path[] = "/mnt/debian/bin/ls\0NG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}"; */
+
 static void z_fini(void)
 {
 	z_printf("Fini at work\n");
@@ -115,11 +125,18 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 		;
 	av = (void *)p;
 
+	z_environ = env;
 	(void)env;
-	if (argc < 2)
-		z_errx(1, "no input file");
-	file = argv[1];
-	mount_epkg_root(argv[1]);
+
+	// if untouched, run argv[1] as app
+	if (epkg_env_osroot[0] == '{') {
+		if (argc < 2)
+			z_errx(1, "no input file");
+		file = argv[1];
+	} else
+		file = target_elf_path;
+
+	mount_epkg_root(epkg_env_osroot, file);
 
 	for (i = 0;; i++, ehdr++) {
 		/* Open file, read and than check ELF header.*/
@@ -187,11 +204,14 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 #undef AVSET
 	++av;
 
-	/* Shift argv, env and av. */
-	z_memcpy(&argv[0], &argv[1],
-		 (unsigned long)av - (unsigned long)&argv[1]);
-	/* SP points to argc. */
-	(*sp)--;
+	// if untouched, run argv[1] as app
+	if (epkg_env_osroot[0] == '{') {
+		/* Shift argv, env and av. */
+		z_memcpy(&argv[0], &argv[1],
+			 (unsigned long)av - (unsigned long)&argv[1]);
+		/* SP points to argc. */
+		(*sp)--;
+	}
 
 	z_trampo((void (*)(void))(elf_interp ?
 			entry[Z_INTERP] : entry[Z_PROG]), sp, z_fini);

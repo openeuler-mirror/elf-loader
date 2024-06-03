@@ -8,212 +8,88 @@
 #include <sys/mount.h>
 #include <sys/types.h>
 #include "z_utils.h"
+#include "z_syscalls.h"
 
+#define OSROOT_BUF_SIZE 1024
 
-char* format_relative_path(char *path)
+static void die(const char *msg)
 {
-	int max_stack_size = 1024;
-	char *stack[max_stack_size];
-	int top = -1;
-	char * token = strtok(path, "/");
-
-	while (token != NULL)
-	{
-		if (strcmp(token, "..") == 0)
-		{
-			if (top >= 0)
-			{
-				--top;
-			}
-			else
-			{
-				return NULL;
-			}
-		}
-		else if (strcmp(token, ".") !=0 )
-		{
-			if (top < max_stack_size -1)
-			{
-				stack[++top] = token;
-			}
-		}
-
-		token = strtok(NULL, "/");
-	}
-
-	char * result = (char *)malloc(PATH_MAX * sizeof(char));
-	int i;
-
-	for (i = 0; i <= top; i++)
-	{
-		strcat(result, "/");
-		strcat(result, stack[i]);
-	}
-
-	return result;
+        z_fdprintf(2, "%s\n", msg);
+        z_exit(1);
 }
 
-char* find_os_root(char* os_root, char *cmd)
+void do_mount(char *src, char *dst)
 {
-	char *p;
-	p = strstr(cmd, "/usr/");
-	if (!p)
-		p = strstr(cmd, "/bin/");
-	if (!p)
-		p = strstr(cmd, "/sbin/");
-
-	if (!p)
-		return NULL;
-
-	if (p - cmd >= PATH_MAX - 1)
-		return NULL;
-
-	strncpy(os_root, cmd, p - cmd);
-	p = os_root + (p - cmd);
-	*p = '\0';
-
-	return p;
+	if (z_mount(src, dst, "", MS_BIND, NULL) == -1)
+		z_printf("mount %s to %s failed\n", src, dst);
+	else
+		z_printf("mount %s to %s success\n", src, dst);
 }
 
-char *merge_string(char *str1, char *str2)
+void mount_opt()
 {
-	char *new_str = (char*)malloc(strlen(str1) + strlen(str2) + 2);
+	char home_opt[200];
+	char *home = z_getenv("HOME");
+	if (!home)
+		return;
 
-	strcpy(new_str, str1);
-	strcat(new_str, " ");
-	strcat(new_str, str2);
+	size_t home_len = z_strlen(home);
+	z_strncpy(home_opt, home, 100);
+	z_memcpy(home_opt + home_len, "/opt", 5);
 
-	return new_str;
+	do_mount(home_opt, "/opt");
 }
 
-int is_mounted(char *mount_point, char *mount_source)
+void mount_os_dir(char *os_root, char *pend, char *dir)
 {
-	int fd;
-	int found = 0;
-	int max_line_len = 1024;
-	char buffer[max_line_len];
-	char *mount_str = merge_string(mount_source, mount_point);
-
-	fd=open("/proc/self/mountinfo", O_RDONLY);
-	if (fd == -1)
-		return -1;
-
-	ssize_t bytes_read;
-
-	while((bytes_read = read(fd, buffer, max_line_len - 1)) > 0){
-		buffer[bytes_read] = '\0';
-
-		char *line = strtok(buffer, "\n");
-		while (line !=NULL)
-		{
-			if (strstr(line, mount_str)){
-				found = 1;
-				break;
-			}
-			line = strtok(NULL, "\n");
-		}
-	}
-
-	close(fd);
-	return found;
+	z_strncpy(pend, dir, 36);
+	do_mount(os_root, dir);
 }
 
-void mount_os_dir(char *os_root, char *p, char *dir)
+void mount_os_root(char *os_root)
 {
-	strncpy(p, dir, 6);
-	if (is_mounted(dir, os_root) == 0)
-	{
-		if (mount(os_root, dir, "", MS_BIND, NULL) == -1)
-			z_printf("mount %s to %s failed\n", os_root, dir);
-		else
-			z_printf("mount %s to %s ssuccess\n", os_root, dir);
-	}
+	char *pend = os_root + z_strlen(os_root);
+
+	z_unshare(CLONE_NEWUSER|CLONE_NEWNS);
+	z_mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
+	mount_os_dir(os_root, pend, "/etc");
+	mount_os_dir(os_root, pend, "/usr");
+	mount_os_dir(os_root, pend, "/var");
+	mount_opt();
 }
 
-void mount_os_root(char *os_root, char *p)
+// set os_root based on cmd
+char* find_osroot(char* buf, const char *cmd)
 {
-	char usr_dir[] = "/usr";
-	char etc_dir[] = "/etc";
-	char var_dir[] = "/var";
+        const char *p;
 
-	unshare(CLONE_NEWNS);
-	mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
-	mount_os_dir(os_root, p, usr_dir);
-	mount_os_dir(os_root, p, etc_dir);
-	mount_os_dir(os_root, p, var_dir);
+        if (cmd[0] != '/')
+                die("XXX: only support full path CMD for now");
+
+        p = z_strstr(cmd, "/usr/");
+        if (!p)
+                p = z_strstr(cmd, "/opt/");
+        if (!p)
+                p = z_strstr(cmd, "/bin/");
+        if (!p)
+                p = z_strstr(cmd, "/sbin/");
+        if (!p)
+                die("cannot find usr/bin in command");
+        if (p - cmd >= OSROOT_BUF_SIZE - 6)
+                die("os_root buffer too small");
+
+        z_strncpy(buf, cmd, p - cmd + 1);
+        return buf;
 }
 
-char *get_full_path_by_cwd(char *exec_file)
+void mount_epkg_root(char *os_root, const char *cmd)
 {
-	char cur_dir[PATH_MAX];
-	char *full_path = (char *)malloc(PATH_MAX * sizeof(char));
-	if (getcwd(cur_dir, PATH_MAX) == NULL)
-	{
-		return NULL;
-	}
+	char buf[OSROOT_BUF_SIZE];
 
-	strcat(full_path, cur_dir);
-	strcat(full_path, "/");
-	strcat(full_path, exec_file);
+	if (os_root[0] == '{')
+		find_osroot(buf, cmd);
+	else
+		z_strncpy(buf, os_root, OSROOT_BUF_SIZE);
 
-	return full_path;
-}
-
-char *get_full_path_by_env(char *exec_file)
-{
-	char *env_path = getenv("PATH");
-	if (env_path == NULL)
-	{
-		return NULL;
-	}
-
-	char * token = strtok(env_path, ":");
-
-	while (token != NULL)
-	{
-		char *full_path = (char *)malloc(PATH_MAX * sizeof(char));
-		strcat(full_path, token);
-		strcat(full_path, "/");
-		strcat(full_path, exec_file);
-		if (access(full_path, F_OK) == 0)
-		{
-			return full_path;
-		}
-
-		token = strtok(NULL, ":");
-	}
-
-	return NULL;
-}
-
-void mount_epkg_root(char * file)
-{
-	char *tp;
-	char *epkg_root = NULL;
-	char os_root[PATH_MAX];
-	char *exec_file = file;
-	if (exec_file)
-	{
-		if(exec_file[0] == '/')
-		{
-			epkg_root = exec_file;
-		}
-		else if (exec_file[0] == '.')
-		{
-			epkg_root = format_relative_path(get_full_path_by_cwd(exec_file));
-		}
-		else
-		{
-			epkg_root = get_full_path_by_env(exec_file);
-		}
-	}
-
-	if (epkg_root != NULL)
-	{
-		tp = find_os_root(os_root, epkg_root);
-		if (tp)
-		{
-			mount_os_root(os_root, tp);
-		}
-	}
+	mount_os_root(buf);
 }
