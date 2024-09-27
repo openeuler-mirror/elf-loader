@@ -26,5 +26,7 @@ int	z_unshare(int flags);
 int	z_mount(const char *source, const char *target,
 		const char *filesystemtype, unsigned long mountflags,
 		const void *data);
+ssize_t	z_getuid(void);
+ssize_t	z_getgid(void);
 
 #endif /* Z_SYSCALLS_H */

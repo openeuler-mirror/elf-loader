@@ -22,8 +22,8 @@ void do_mount(char *src, char *dst)
 {
 	if (z_mount(src, dst, "", MS_BIND, NULL) == -1)
 		z_printf("mount %s to %s failed\n", src, dst);
-	else
-		z_printf("mount %s to %s success\n", src, dst);
+	//else
+	//	z_printf("mount %s to %s success\n", src, dst);
 }
 
 void mount_opt()
@@ -46,11 +46,54 @@ void mount_os_dir(char *os_root, char *pend, char *dir)
 	do_mount(os_root, dir);
 }
 
+void get_guid(){
+	z_printf("uid:%d gid:%d\n",z_getuid(), z_getgid());
+}
+
+void set_fd_id(char* fd_path, ssize_t id){
+
+	int map_fd = z_open(fd_path, O_WRONLY);
+	if (map_fd < 0) {
+			z_printf("open %s failed: %d\n",fd_path, z_errno);
+			die("open failed");
+	}
+	// z_fdprintf(uid_map_fd, "0 %ul 1", id);
+	char *p;
+	char buf[20] = {
+		'0', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '1', '\0'
+	};
+
+	p = buf + 16;
+	do {
+		*p-- = "0123456789abcdef"[id % 10];
+	} while (id /= 10);
+	z_write(map_fd, buf, 20);
+	z_close(map_fd);
+}
+
+void set_map(ssize_t uid, ssize_t gid){
+	int groups_fd = z_open("/proc/self/setgroups", O_WRONLY | O_TRUNC);
+	if (groups_fd < 0) {
+		z_printf("open /proc/self/setgroups failed: %d\n", z_errno);
+		die("open /proc/self/setgroups failed");
+	}
+	z_write(groups_fd, "deny", 4);
+	z_close(groups_fd);
+
+	set_fd_id("/proc/self/uid_map", uid);
+	set_fd_id("/proc/self/gid_map", gid);
+}
+
 void mount_os_root(char *os_root)
 {
 	char *pend = os_root + z_strlen(os_root);
 
+	ssize_t uid = z_getuid();
+	ssize_t gid = z_getgid();
 	z_unshare(CLONE_NEWUSER|CLONE_NEWNS);
+	set_map(uid, gid);
+
 	z_mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
 	mount_os_dir(os_root, pend, "/etc");
 	mount_os_dir(os_root, pend, "/usr");

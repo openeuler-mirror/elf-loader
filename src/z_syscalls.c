@@ -19,7 +19,14 @@ static long check_error(long rc)
 	return rc;
 }
 
-#define SYSCALL(name, ...)  check_error(z_syscall(SYS_##name, __VA_ARGS__))
+#define SYSCALL(name, ...)  check_error(z_syscall(SYS_##name, ##__VA_ARGS__))
+
+#define DEF_SYSCALL0(ret, name) \
+ret z_##name(void) \
+{ \
+	return (ret)SYSCALL(name); \
+}
+
 #define DEF_SYSCALL1(ret, name, t1, a1) \
 ret z_##name(t1 a1) \
 { \
@@ -50,6 +57,8 @@ DEF_SYSCALL2(int, munmap, void *, addr, size_t, length)
 DEF_SYSCALL3(int, mprotect, void *, addr, size_t, length, int, prot)
 DEF_SYSCALL1(int, unshare, int, flags)
 DEF_SYSCALL5(int, mount, const char *, source, const char *, target, const char *, filesystemtype, unsigned long, mountflags, const void *, data)
+DEF_SYSCALL0(ssize_t, getuid)
+DEF_SYSCALL0(ssize_t, getgid)
 
 int z_open(const char * filename, int flags)
 {
