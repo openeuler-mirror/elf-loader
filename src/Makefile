@@ -40,7 +40,7 @@ COMMON_FLAGS := -pipe -Wall -Wextra -fno-ident -fno-stack-protector -U_FORTIFY_S
 CFLAGS += $(COMMON_FLAGS) -fPIC
 LDFLAGS += -nostartfiles -nodefaultlibs -nostdlib
 LDFLAGS += -e z_start -pie -Wl,-Bsymbolic,--no-undefined,--build-id=none
-ASFLAGS += $(COMMON_FLAGS)
+ASFLAGS += $(COMMON_FLAGS) -Wa,--noexecstack
 
 # Architecture-specific flags -------------------------------------------------
 
