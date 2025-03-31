@@ -4,10 +4,15 @@
 #include "z_elf.h"
 #include "z_epkg.h"
 
-// PAGE_SIZE is now defined in Makefile
-// #define PAGE_SIZE	4096
+/* Auxiliary vector entry structure */
+struct auxv_entry {
+    unsigned long a_type;
+    unsigned long a_val;
+};
 
-#define ALIGN		(PAGE_SIZE - 1)
+static unsigned long page_size = 0;
+
+#define ALIGN		(page_size - 1)
 #define ROUND_PG(x)	(((x) + (ALIGN)) & ~(ALIGN))
 #define TRUNC_PG(x)	((x) & ~(ALIGN))
 #define PFLAGS(x)	((((x) & PF_R) ? PROT_READ : 0) | \
@@ -24,6 +29,32 @@ static char target_elf_path[] = "{{TARGET_ELF_PATH LONG0 LONG1 LONG2 LONG3 LONG4
 // replaced for debug
 /* static char epkg_env_osroot[] = "/mnt/debian\0DIR LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}"; */
 /* static char target_elf_path[] = "/mnt/debian/bin/ls\0NG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}"; */
+
+/* Initialize page_size by reading from auxv */
+static void init_page_size(void)
+{
+    int fd;
+    struct auxv_entry entry;
+
+    fd = z_open("/proc/self/auxv", 0);  // O_RDONLY
+    if (fd < 0) goto fallback;
+
+    while (z_read(fd, &entry, sizeof(entry)) == sizeof(entry)) {
+        if (entry.a_type == AT_PAGESZ) {
+            page_size = entry.a_val;
+            break;
+        }
+        if (entry.a_type == AT_NULL) break;
+    }
+
+    z_close(fd);
+
+fallback:
+    /* Default to 4096 if detection fails */
+    if (page_size == 0) {
+        page_size = 4096;
+    }
+}
 
 static void z_fini(void)
 {
@@ -50,7 +81,7 @@ static unsigned long loadelf_anon(int fd, Elf_Ehdr *ehdr, Elf_Phdr *phdr)
 
 	minva = (unsigned long)-1;
 	maxva = 0;
-	
+
 	for (iter = phdr; iter < &phdr[ehdr->e_phnum]; iter++) {
 		if (iter->p_type != PT_LOAD)
 			continue;
@@ -63,7 +94,7 @@ static unsigned long loadelf_anon(int fd, Elf_Ehdr *ehdr, Elf_Phdr *phdr)
 	minva = TRUNC_PG(minva);
 	maxva = ROUND_PG(maxva);
 
-	/* For dynamic ELF let the kernel chose the address. */	
+	/* For dynamic ELF let the kernel chose the address. */
 	hint = dyn ? NULL : (void *)minva;
 	flags = dyn ? 0 : MAP_FIXED_NOREPLACE;
 	flags |= (MAP_PRIVATE | MAP_ANONYMOUS);
@@ -115,6 +146,8 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 	const char *file;
 	ssize_t sz;
 	int argc, fd, i;
+
+	init_page_size();
 
 	(void)fini;
 
