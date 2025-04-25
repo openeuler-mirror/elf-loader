@@ -10,6 +10,13 @@
 #include "z_utils.h"
 #include "z_syscalls.h"
 
+// Format specifier for ssize_t based on architecture
+#if defined(__i386__) || defined(__i686__)
+#define SSIZE_FMT "%d"
+#else
+#define SSIZE_FMT "%ld"
+#endif
+
 #define OSROOT_BUF_SIZE 1024
 
 static void die(const char *msg)
@@ -47,7 +54,7 @@ void mount_os_dir(char *os_root, char *pend, char *dir)
 }
 
 void get_guid(){
-	z_printf("uid:%d gid:%d\n",z_getuid(), z_getgid());
+	z_printf("uid:" SSIZE_FMT " gid:" SSIZE_FMT "\n", z_getuid(), z_getgid());
 }
 
 void set_fd_id(char* fd_path, ssize_t id){
