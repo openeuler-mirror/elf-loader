@@ -98,6 +98,8 @@ ifeq "$(STATIC)" "1"
   CFLAGS += -static
 endif
 
+LDFLAGS += -T link.ld
+
 # Source files ----------------------------------------------------------------
 
 SRC_C := $(wildcard *.c)
