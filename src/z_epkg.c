@@ -98,7 +98,13 @@ void mount_os_root(char *os_root)
 
 	ssize_t uid = z_getuid();
 	ssize_t gid = z_getgid();
-	z_unshare(CLONE_NEWUSER|CLONE_NEWNS);
+	ssize_t euid = z_geteuid();
+	int clone_flags = 0;
+
+	if (euid)
+		clone_flags = CLONE_NEWUSER;
+	z_unshare(clone_flags|CLONE_NEWNS);
+
 	set_map(uid, gid);
 
 	z_mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);

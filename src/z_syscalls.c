@@ -59,6 +59,7 @@ DEF_SYSCALL1(int, unshare, int, flags)
 DEF_SYSCALL5(int, mount, const char *, source, const char *, target, const char *, filesystemtype, unsigned long, mountflags, const void *, data)
 DEF_SYSCALL0(ssize_t, getuid)
 DEF_SYSCALL0(ssize_t, getgid)
+DEF_SYSCALL0(ssize_t, geteuid)
 
 int z_open(const char * filename, int flags)
 {

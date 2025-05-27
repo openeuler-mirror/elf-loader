@@ -28,5 +28,6 @@ int	z_mount(const char *source, const char *target,
 		const void *data);
 ssize_t	z_getuid(void);
 ssize_t	z_getgid(void);
+ssize_t z_geteuid(void);
 
 #endif /* Z_SYSCALLS_H */
