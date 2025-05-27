@@ -98,7 +98,6 @@ ifeq "$(STATIC)" "1"
   CFLAGS += -static
 endif
 
-
 # Source files ----------------------------------------------------------------
 
 SRC_C := $(wildcard *.c)
