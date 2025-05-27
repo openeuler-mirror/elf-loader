@@ -52,7 +52,7 @@ PKG_loongarch64 := gcc-loongarch64-linux-gnu libc6-dev-loong64-cross
 COMMON_FLAGS := -pipe -Wall -Wextra -fno-ident -fno-stack-protector -U_FORTIFY_SOURCE
 CFLAGS += $(COMMON_FLAGS) -fPIC
 LDFLAGS += -nostartfiles -nodefaultlibs -nostdlib
-LDFLAGS += -e z_start -pie -Wl,-Bsymbolic,--no-undefined,--build-id=none
+LDFLAGS += -e z_start -pie -Wl,-Bsymbolic,--no-undefined,--build-id=none,-Ttext=0x300000
 ASFLAGS += $(COMMON_FLAGS) -Wa,--noexecstack
 
 # Add sysroot and include paths for cross-compilation
