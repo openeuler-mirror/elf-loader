@@ -175,10 +175,10 @@ release-loongarch64:
 
 release-all:
 	make release-i686
-	make release-x86_64
 	make release-aarch64
 	make release-riscv64
 	make release-loongarch64
+	make release-x86_64 # put in the end, so that the remaining binary is the most common arch
 	@echo "Build complete. Binaries and checksums are in dist/"
 
 # Install dependencies --------------------------------------------------------
