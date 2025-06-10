@@ -33,23 +33,55 @@ void do_mount(char *src, char *dst)
 	//	z_printf("mount %s to %s success\n", src, dst);
 }
 
-void mount_opt()
+void mount_opt(char *os_root)
 {
-	char home_opt[200];
-	char *home = z_getenv("HOME");
+	char os_opt[200];
+	char opt_epkg_path[200];
+	char opt_real_path[200];
 
-	// If HOME is not set, we can't mount /opt
-	if (!home) {
-		// Debug message to help diagnose the issue
-		z_printf("Warning: HOME environment variable not set, skipping /opt mount\n");
-		return;
+	// Initialize manually to avoid memset link error
+	z_strncpy(opt_epkg_path, "/opt/epkg", 10);
+
+	size_t os_root_len = z_strlen(os_root);
+
+	// Create paths
+	z_strncpy(os_opt, os_root, 100);
+	z_strncpy(os_opt + os_root_len, "/opt", 5);
+
+	z_strncpy(opt_real_path, os_root, 100);
+	z_strncpy(opt_real_path + os_root_len, "/opt_real", 9);
+
+	// First check if /opt/epkg exists
+	int opt_epkg_fd = z_open(opt_epkg_path, O_RDONLY);
+	if (opt_epkg_fd >= 0) {
+		z_close(opt_epkg_fd);
+
+		// Special handling for /opt/epkg mount isolation
+		// Step 1: Create opt_real directory
+		int mkdir_fd = z_open(opt_real_path, O_CREAT | O_RDONLY);
+		if (mkdir_fd >= 0) {
+			z_close(mkdir_fd);
+		}
+
+		// Step 2: Bind mount /opt/epkg to os_root/opt_real
+		/* z_printf("Bind mounting %s to %s\n", opt_epkg_path, opt_real_path); */
+		do_mount(opt_epkg_path, opt_real_path);
 	}
 
-	size_t home_len = z_strlen(home);
-	z_strncpy(home_opt, home, 100);
-	z_memcpy(home_opt + home_len, "/opt", 5);
+	// Step 3: Mount environment /opt directory
+	/* z_printf("Bind mounting %s to %s\n", os_opt, "/opt"); */
+	do_mount(os_opt, "/opt");
 
-	do_mount(home_opt, "/opt");
+	// Step 4: If /opt/epkg existed, bind mount opt_real back to /opt/epkg
+	if (opt_epkg_fd >= 0) {
+		// Check if opt_real_path exists
+		int opt_real_fd = z_open(opt_real_path, O_RDONLY);
+		if (opt_real_fd >= 0) {
+			z_close(opt_real_fd);
+			/* z_printf("Bind mounting %s to %s\n", opt_real_path, opt_epkg_path); */
+			do_mount(opt_real_path, opt_epkg_path);
+		}
+	}
 }
 
 void mount_os_dir(char *os_root, char *pend, char *dir)
@@ -99,7 +131,9 @@ void set_map(ssize_t uid, ssize_t gid){
 
 void mount_os_root(char *os_root)
 {
-	char *pend = os_root + z_strlen(os_root);
+	char os_root_copy[OSROOT_BUF_SIZE];
+	z_strncpy(os_root_copy, os_root, OSROOT_BUF_SIZE);
+	char *pend = os_root_copy + z_strlen(os_root_copy);
 
 	ssize_t uid = z_getuid();
 	ssize_t gid = z_getgid();
@@ -113,10 +147,10 @@ void mount_os_root(char *os_root)
 	set_map(uid, gid);
 
 	z_mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL);
-	mount_os_dir(os_root, pend, "/etc");
-	mount_os_dir(os_root, pend, "/usr");
-	mount_os_dir(os_root, pend, "/var");
-	mount_opt();
+	mount_os_dir(os_root_copy, pend, "/etc");
+	mount_os_dir(os_root_copy, pend, "/usr");
+	mount_os_dir(os_root_copy, pend, "/var");
+	mount_opt(os_root);
 }
 
 // set os_root based on cmd
