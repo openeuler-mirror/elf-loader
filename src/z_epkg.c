@@ -37,8 +37,13 @@ void mount_opt()
 {
 	char home_opt[200];
 	char *home = z_getenv("HOME");
-	if (!home)
+
+	// If HOME is not set, we can't mount /opt
+	if (!home) {
+		// Debug message to help diagnose the issue
+		z_printf("Warning: HOME environment variable not set, skipping /opt mount\n");
 		return;
+	}
 
 	size_t home_len = z_strlen(home);
 	z_strncpy(home_opt, home, 100);

@@ -46,7 +46,11 @@ size_t z_strlen(const char *str)
 
 int z_strcmp(const char *x, const char *y)
 {
-    while (*x)
+    // Handle NULL pointers
+    if (x == NULL || y == NULL)
+        return x == y ? 0 : (x == NULL ? -1 : 1);
+
+    while (*x && *y)
     {
         if (*x != *y)
             break;
@@ -71,10 +75,19 @@ char *z_getenv(const char *name)
 
 	for (char **ep = z_environ; *ep != NULL; ++ep)
 	{
-		if (name[0] == (*ep)[0] &&
-		    z_strcmp(name, *ep) == 0 &&
-		    (*ep)[len] == '=')
-			return *ep + len + 1;
+		// Check if this environment variable starts with name and has '=' after it
+		if (name[0] == (*ep)[0]) {
+			// Compare only the name part (up to len characters)
+			size_t i;
+			for (i = 0; i < len; i++) {
+				if (name[i] != (*ep)[i])
+					break;
+			}
+
+			// If we matched the full name and next char is '=', return the value
+			if (i == len && (*ep)[len] == '=')
+				return *ep + len + 1;
+		}
 	}
 
 	return NULL;
