@@ -30,75 +30,134 @@ static char target_elf_path[] = "{{TARGET_ELF_PATH LONG0 LONG1 LONG2 LONG3 LONG4
 /* static char epkg_env_osroot[] = "/mnt/debian\0DIR LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}"; */
 /* static char target_elf_path[] = "/mnt/debian/bin/ls\0NG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9 LONG0 LONG1 LONG2 LONG3 LONG4 LONG5 LONG6 LONG7 LONG8 LONG9}}"; */
 
-static char auto_detected_osroot[256];
-static char auto_detected_target[256];
+#define PATH_BUF_SIZE 1024
+static char auto_detected_osroot[PATH_BUF_SIZE];
+static char auto_detected_target[PATH_BUF_SIZE];
 
-/* Auto-detect paths when placeholders are not modified by binary edit tool */
-static void auto_detect_paths(const char *argv0)
+/* Get the path of the current executable */
+static void get_executable_path(const char *argv0, char *exec_path, size_t path_size)
 {
-    char self_path[256];
-    char *base_path_end, *usr_end;
     ssize_t len;
     int i;
 
-    // Clear buffers
-    for (i = 0; i < 256; i++) {
-        auto_detected_osroot[i] = '\0';
-        auto_detected_target[i] = '\0';
-        self_path[i] = '\0';
+    // Clear buffer
+    for (i = 0; i < path_size; i++) {
+        exec_path[i] = '\0';
     }
 
     // Get the path of the current executable ($0)
-    len = z_readlink("/proc/self/exe", self_path, sizeof(self_path) - 1);
+    len = z_readlink("/proc/self/exe", exec_path, path_size - 1);
     if (len == -1) {
         // Fall back to argv[0] if readlink fails
         len = 0;
-        while (argv0[len] && len < sizeof(self_path) - 1) {
-            self_path[len] = argv0[len];
+        while (argv0[len] && len < path_size - 1) {
+            exec_path[len] = argv0[len];
             len++;
         }
     }
-    self_path[len] = '\0';
+    exec_path[len] = '\0';
+}
+
+/* Detect osroot from executable path */
+static void detect_osroot(const char *exec_path)
+{
+    char base_path[PATH_BUF_SIZE];
+    char *base_path_end;
+    ssize_t len;
+    int i;
+
+    // Clear buffer
+    for (i = 0; i < PATH_BUF_SIZE; i++) {
+        // auto_detected_osroot[i] = '\0';
+        base_path[i] = '\0';
+    }
+
+    // Copy exec_path to working buffer
+    len = 0;
+    while (exec_path[len] && len < sizeof(base_path) - 1) {
+        base_path[len] = exec_path[len];
+        len++;
+    }
+    base_path[len] = '\0';
 
     // Find the last '/' to get the directory part
-    base_path_end = self_path + len;
-    while (base_path_end > self_path && *(base_path_end - 1) != '/') {
+    base_path_end = base_path + len;
+    while (base_path_end > base_path && *(base_path_end - 1) != '/') {
         base_path_end--;
     }
-    if (base_path_end > self_path) {
+    if (base_path_end > base_path) {
         base_path_end--; // Remove the trailing '/'
     }
     *base_path_end = '\0';
 
     // Check if path ends with "/ebin" and remove it
-    len = base_path_end - self_path;
-    if (len >= 5 && z_memcmp(self_path + len - 5, "/ebin", 5) == 0) {
-        self_path[len - 5] = '\0';
-        base_path_end = self_path + len - 5;
+    len = base_path_end - base_path;
+    if (len >= 5 && z_memcmp(base_path + len - 5, "/ebin", 5) == 0) {
+        base_path[len - 5] = '\0';
+        base_path_end = base_path + len - 5;
     }
 
     // For epkg_env_osroot: base_path.trim("/usr")
-    len = base_path_end - self_path;
-    if (len >= 4 && z_memcmp(self_path + len - 4, "/usr", 4) == 0) {
+    len = base_path_end - base_path;
+    if (len >= 4 && z_memcmp(base_path + len - 4, "/usr", 4) == 0) {
         // Copy everything except the last "/usr"
         for (i = 0; i < len - 4; i++) {
-            auto_detected_osroot[i] = self_path[i];
+            auto_detected_osroot[i] = base_path[i];
         }
         auto_detected_osroot[len - 4] = '\0';
     } else {
         // Copy the whole base_path if it doesn't end with "/usr"
         for (i = 0; i < len; i++) {
-            auto_detected_osroot[i] = self_path[i];
+            auto_detected_osroot[i] = base_path[i];
         }
         auto_detected_osroot[len] = '\0';
     }
+}
 
-    // For target_elf_path: try readlink on symlinks
-    // First try: base_path + "/" + filename(argv0) (symlink1)
-    char symlink1_path[256];
+/* Detect target ELF path through symlinks */
+static void detect_target_path(const char *argv0, const char *exec_path)
+{
+    char base_path[PATH_BUF_SIZE];
+    char *base_path_end;
+    char symlink1_path[PATH_BUF_SIZE];
+    char symlink2_path[PATH_BUF_SIZE];
     char filename[64];
     const char *argv0_filename = argv0;
     const char *last_slash = argv0;
+    const char *argv0_dir_end;
+    ssize_t len;
+    int i;
+
+    // Clear buffer
+    for (i = 0; i < PATH_BUF_SIZE; i++) {
+        // auto_detected_target[i] = '\0';
+        base_path[i] = '\0';
+    }
+
+    // Copy exec_path to working buffer and get base path
+    len = 0;
+    while (exec_path[len] && len < sizeof(base_path) - 1) {
+        base_path[len] = exec_path[len];
+        len++;
+    }
+    base_path[len] = '\0';
+
+    // Find the directory part of exec_path
+    base_path_end = base_path + len;
+    while (base_path_end > base_path && *(base_path_end - 1) != '/') {
+        base_path_end--;
+    }
+    if (base_path_end > base_path) {
+        base_path_end--; // Remove the trailing '/'
+    }
+    *base_path_end = '\0';
+
+    // Check if path ends with "/ebin" and remove it
+    len = base_path_end - base_path;
+    if (len >= 5 && z_memcmp(base_path + len - 5, "/ebin", 5) == 0) {
+        base_path[len - 5] = '\0';
+        base_path_end = base_path + len - 5;
+    }
 
     // Find the filename part of argv0
     while (*last_slash) {
@@ -117,9 +176,9 @@ static void auto_detect_paths(const char *argv0)
     filename[i] = '\0';
 
     // Construct symlink1 path: base_path + "/" + filename
-    len = base_path_end - self_path;
+    len = base_path_end - base_path;
     for (i = 0; i < len; i++) {
-        symlink1_path[i] = self_path[i];
+        symlink1_path[i] = base_path[i];
     }
     symlink1_path[len] = '/';
     len++;
@@ -135,46 +194,56 @@ static void auto_detect_paths(const char *argv0)
     len = z_readlink(symlink1_path, auto_detected_target, sizeof(auto_detected_target) - 1);
     if (len != -1) {
         auto_detected_target[len] = '\0';
-    } else {
-        // Fall back to symlink2: dirname(argv0) + "/." + filename(argv0)
-        char symlink2_path[256];
-        const char *argv0_dir_end = argv0 + z_strlen(argv0);
-
-        // Find the directory part of argv0
-        while (argv0_dir_end > argv0 && *(argv0_dir_end - 1) != '/') {
-            argv0_dir_end--;
-        }
-
-        // Copy directory part
-        len = argv0_dir_end - argv0;
-        for (i = 0; i < len && i < sizeof(symlink2_path) - 1; i++) {
-            symlink2_path[i] = argv0[i];
-        }
-
-        // Add "." prefix to filename
-        if (len < sizeof(symlink2_path) - 1) {
-            symlink2_path[len] = '.';
-            len++;
-        }
-
-        // Add filename
-        i = 0;
-        while (filename[i] && len < sizeof(symlink2_path) - 1) {
-            symlink2_path[len] = filename[i];
-            len++;
-            i++;
-        }
-        symlink2_path[len] = '\0';
-
-        // Try to readlink symlink2
-        len = z_readlink(symlink2_path, auto_detected_target, sizeof(auto_detected_target) - 1);
-        if (len != -1) {
-            auto_detected_target[len] = '\0';
-        } else {
-            // Final fallback: use argv[1] if available
-            auto_detected_target[0] = '\0';
-        }
+        return;
     }
+
+    // Fall back to symlink2: dirname(argv0) + "/." + filename(argv0)
+    argv0_dir_end = argv0 + z_strlen(argv0);
+
+    // Find the directory part of argv0
+    while (argv0_dir_end > argv0 && *(argv0_dir_end - 1) != '/') {
+        argv0_dir_end--;
+    }
+
+    // Copy directory part
+    len = argv0_dir_end - argv0;
+    for (i = 0; i < len && i < sizeof(symlink2_path) - 1; i++) {
+        symlink2_path[i] = argv0[i];
+    }
+
+    // Add "." prefix to filename
+    if (len < sizeof(symlink2_path) - 1) {
+        symlink2_path[len] = '.';
+        len++;
+    }
+
+    // Add filename
+    i = 0;
+    while (filename[i] && len < sizeof(symlink2_path) - 1) {
+        symlink2_path[len] = filename[i];
+        len++;
+        i++;
+    }
+    symlink2_path[len] = '\0';
+
+    // Try to readlink symlink2
+    len = z_readlink(symlink2_path, auto_detected_target, sizeof(auto_detected_target) - 1);
+    if (len != -1) {
+        auto_detected_target[len] = '\0';
+    } else {
+        // Final fallback: use argv[1] if available
+        auto_detected_target[0] = '\0';
+    }
+}
+
+/* Auto-detect paths when placeholders are not modified by binary edit tool */
+static void auto_detect_paths(const char *argv0)
+{
+    char exec_path[PATH_BUF_SIZE];
+
+    get_executable_path(argv0, exec_path, sizeof(exec_path));
+    detect_osroot(exec_path);
+    detect_target_path(argv0, exec_path);
 }
 
 /* Initialize page_size by reading from auxv */
@@ -283,134 +352,154 @@ err:
 #define Z_PROG		0
 #define Z_INTERP	1
 
+/* Initialize environment and parse arguments */
+static void initialize_environment(unsigned long *sp, char ***argv, char ***env, Elf_auxv_t **av, int *argc)
+{
+    char **p;
+
+    init_page_size();
+
+    *argc = (int)*(sp);
+    *argv = (char **)(sp + 1);
+    *env = p = (char **)&(*argv)[*argc + 1];
+    while (*p++ != NULL)
+        ;
+    *av = (void *)p;
+
+    z_environ = *env;
+}
+
+/* Determine elf_file to execute and osroot to use */
+static void determine_file_and_osroot(char **argv, const char **elf_file, const char **osroot_to_use)
+{
+    // Check if placeholders are still untouched and auto-detect if needed
+    if (epkg_env_osroot[0] == '{' && z_memcmp(epkg_env_osroot, "{{SOURCE_ENV_DIR LONG0 LONG1", 29) == 0) {
+        // Placeholders are untouched, auto-detect paths
+        auto_detect_paths(argv[0]);
+        *osroot_to_use = auto_detected_osroot;
+        *elf_file = auto_detected_target;
+    } else {
+        // Placeholders have been modified by binary edit tool
+        *osroot_to_use = epkg_env_osroot;
+        *elf_file = target_elf_path;
+    }
+
+    if (elf_file[0] == '\0') {
+        z_errx(1, "no target_elf_path");
+    }
+    if (osroot_to_use[0] == '\0') {
+        z_errx(1, "no epkg_env_osroot");
+    }
+}
+
+/* Setup auxiliary vector entries */
+static void setup_auxv(Elf_auxv_t *av, unsigned long *base, Elf_Ehdr *ehdrs, unsigned long *entry, char *elf_interp, char **argv)
+{
+    /* Reassign some vectors that are important for
+     * the dynamic linker and for lib C. */
+#define AVSET(t, v, expr) case (t): (v)->a_un.a_val = (expr); break
+    while (av->a_type != AT_NULL) {
+        switch (av->a_type) {
+        AVSET(AT_PHDR, av, base[Z_PROG] + ehdrs[Z_PROG].e_phoff);
+        AVSET(AT_PHNUM, av, ehdrs[Z_PROG].e_phnum);
+        AVSET(AT_PHENT, av, ehdrs[Z_PROG].e_phentsize);
+        AVSET(AT_ENTRY, av, entry[Z_PROG]);
+        AVSET(AT_EXECFN, av, (unsigned long)argv[1]);
+        AVSET(AT_BASE, av, elf_interp ?
+                base[Z_INTERP] : av->a_un.a_val);
+        }
+        ++av;
+    }
+#undef AVSET
+}
+
+/* Load and execute ELF files */
+static void load_and_execute_elf(const char *file, char **argv, unsigned long *sp, Elf_auxv_t *av)
+{
+    Elf_Ehdr ehdrs[2], *ehdr = ehdrs;
+    Elf_Phdr *phdr, *iter;
+    char *elf_interp = NULL;
+    unsigned long base[2], entry[2];
+    ssize_t sz;
+    int fd, i;
+
+    for (i = 0;; i++, ehdr++) {
+        /* Open file, read and than check ELF header.*/
+        if ((fd = z_open(file, O_RDONLY)) < 0)
+            z_errx(1, "can't open %s", file);
+        if (z_read(fd, ehdr, sizeof(*ehdr)) != sizeof(*ehdr))
+            z_errx(1, "can't read ELF header %s", file);
+        if (!check_ehdr(ehdr))
+            z_errx(1, "bogus ELF header %s", file);
+
+        /* Read the program header. */
+        sz = ehdr->e_phnum * sizeof(Elf_Phdr);
+        phdr = z_alloca(sz);
+        if (z_lseek(fd, ehdr->e_phoff, SEEK_SET) < 0)
+            z_errx(1, "can't lseek to program header %s", file);
+        if (z_read(fd, phdr, sz) != sz)
+            z_errx(1, "can't read program header %s", file);
+        /* Time to load ELF. */
+        if ((base[i] = loadelf_anon(fd, ehdr, phdr)) == LOAD_ERR)
+            z_errx(1, "can't load ELF %s", file);
+
+        /* Set the entry point, if the file is dynamic than add bias. */
+        entry[i] = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base[i] : 0);
+        /* The second round, we've loaded ELF interp. */
+        if (file == elf_interp) {
+            z_close(fd);
+            break;
+        }
+
+        for (iter = phdr; iter < &phdr[ehdr->e_phnum]; iter++) {
+            if (iter->p_type != PT_INTERP)
+                continue;
+            elf_interp = z_alloca(iter->p_filesz);
+            if (z_lseek(fd, iter->p_offset, SEEK_SET) < 0)
+                z_errx(1, "can't lseek interp segment");
+            if (z_read(fd, elf_interp, iter->p_filesz) !=
+                    (ssize_t)iter->p_filesz)
+                z_errx(1, "can't read interp segment");
+            if (elf_interp[iter->p_filesz - 1] != '\0')
+                z_errx(1, "bogus interp path");
+            file = elf_interp;
+        }
+
+        z_close(fd);
+        /* Looks like the ELF is static -- leave the loop. */
+        if (elf_interp == NULL)
+            break;
+    }
+
+    setup_auxv(av, base, ehdrs, entry, elf_interp, argv);
+    ++av;
+
+    z_trampo((void (*)(void))(elf_interp ?
+            entry[Z_INTERP] : entry[Z_PROG]), sp, z_fini);
+    /* Should not reach. */
+    z_exit(0);
+}
+
 void z_entry(unsigned long *sp, void (*fini)(void))
 {
-	Elf_Ehdr ehdrs[2], *ehdr = ehdrs;
-	Elf_Phdr *phdr, *iter;
-	Elf_auxv_t *av;
-	char **argv, **env, **p, *elf_interp = NULL;
-	unsigned long base[2], entry[2];
-	const char *file;
-	const char *osroot_to_use;
-	ssize_t sz;
-	int argc, fd, i;
+    char **argv, **env;
+    Elf_auxv_t *av;
+    int argc;
+    const char *elf_file;
+    const char *osroot_to_use;
 
-	init_page_size();
+    (void)fini;
 
-	(void)fini;
+    // Initialize environment and parse arguments
+    initialize_environment(sp, &argv, &env, &av, &argc);
 
-	argc = (int)*(sp);
-	argv = (char **)(sp + 1);
-	env = p = (char **)&argv[argc + 1];
-	while (*p++ != NULL)
-		;
-	av = (void *)p;
+    // Determine elf_file to execute and osroot to use
+    determine_file_and_osroot(argv, &elf_file, &osroot_to_use);
 
-	z_environ = env;
-	(void)env;
+    // Mount the epkg root
+    mount_epkg_root(osroot_to_use, elf_file);
 
-	// Check if placeholders are still untouched and auto-detect if needed
-	if (epkg_env_osroot[0] == '{' && z_memcmp(epkg_env_osroot, "{{SOURCE_ENV_DIR LONG0 LONG1", 29) == 0) {
-		// Placeholders are untouched, auto-detect paths
-		auto_detect_paths(argv[0]);
-		osroot_to_use = auto_detected_osroot;
-
-		if (target_elf_path[0] == '{' && z_memcmp(target_elf_path, "{{TARGET_ELF_PATH LONG0 LONG1", 30) == 0) {
-			// Use auto-detected target if available, otherwise fall back to argv[1]
-			if (auto_detected_target[0] != '\0') {
-				file = auto_detected_target;
-			} else {
-				if (argc < 2)
-					z_errx(1, "no input file");
-				file = argv[1];
-			}
-		} else {
-			file = target_elf_path;
-		}
-	} else {
-		// Placeholders have been modified by binary edit tool
-		osroot_to_use = epkg_env_osroot;
-
-		// if untouched, run argv[1] as app
-		if (epkg_env_osroot[0] == '{') {
-			if (argc < 2)
-				z_errx(1, "no input file");
-			file = argv[1];
-		} else
-			file = target_elf_path;
-	}
-
-	mount_epkg_root(osroot_to_use, file);
-
-	for (i = 0;; i++, ehdr++) {
-		/* Open file, read and than check ELF header.*/
-		if ((fd = z_open(file, O_RDONLY)) < 0)
-			z_errx(1, "can't open %s", file);
-		if (z_read(fd, ehdr, sizeof(*ehdr)) != sizeof(*ehdr))
-			z_errx(1, "can't read ELF header %s", file);
-		if (!check_ehdr(ehdr))
-			z_errx(1, "bogus ELF header %s", file);
-
-		/* Read the program header. */
-		sz = ehdr->e_phnum * sizeof(Elf_Phdr);
-		phdr = z_alloca(sz);
-		if (z_lseek(fd, ehdr->e_phoff, SEEK_SET) < 0)
-			z_errx(1, "can't lseek to program header %s", file);
-		if (z_read(fd, phdr, sz) != sz)
-			z_errx(1, "can't read program header %s", file);
-		/* Time to load ELF. */
-		if ((base[i] = loadelf_anon(fd, ehdr, phdr)) == LOAD_ERR)
-			z_errx(1, "can't load ELF %s", file);
-
-		/* Set the entry point, if the file is dynamic than add bias. */
-		entry[i] = ehdr->e_entry + (ehdr->e_type == ET_DYN ? base[i] : 0);
-		/* The second round, we've loaded ELF interp. */
-		if (file == elf_interp) {
-			z_close(fd);
-			break;
-		}
-
-		for (iter = phdr; iter < &phdr[ehdr->e_phnum]; iter++) {
-			if (iter->p_type != PT_INTERP)
-				continue;
-			elf_interp = z_alloca(iter->p_filesz);
-			if (z_lseek(fd, iter->p_offset, SEEK_SET) < 0)
-				z_errx(1, "can't lseek interp segment");
-			if (z_read(fd, elf_interp, iter->p_filesz) !=
-					(ssize_t)iter->p_filesz)
-				z_errx(1, "can't read interp segment");
-			if (elf_interp[iter->p_filesz - 1] != '\0')
-				z_errx(1, "bogus interp path");
-			file = elf_interp;
-		}
-
-		z_close(fd);
-		/* Looks like the ELF is static -- leave the loop. */
-		if (elf_interp == NULL)
-			break;
-	}
-
-	/* Reassign some vectors that are important for
-	 * the dynamic linker and for lib C. */
-#define AVSET(t, v, expr) case (t): (v)->a_un.a_val = (expr); break
-	while (av->a_type != AT_NULL) {
-		switch (av->a_type) {
-		AVSET(AT_PHDR, av, base[Z_PROG] + ehdrs[Z_PROG].e_phoff);
-		AVSET(AT_PHNUM, av, ehdrs[Z_PROG].e_phnum);
-		AVSET(AT_PHENT, av, ehdrs[Z_PROG].e_phentsize);
-		AVSET(AT_ENTRY, av, entry[Z_PROG]);
-		AVSET(AT_EXECFN, av, (unsigned long)argv[1]);
-		AVSET(AT_BASE, av, elf_interp ?
-				base[Z_INTERP] : av->a_un.a_val);
-		}
-		++av;
-	}
-#undef AVSET
-	++av;
-
-	z_trampo((void (*)(void))(elf_interp ?
-			entry[Z_INTERP] : entry[Z_PROG]), sp, z_fini);
-	/* Should not reach. */
-	z_exit(0);
+    // Load and execute ELF
+    load_and_execute_elf(elf_file, argv, sp, av);
 }
 
