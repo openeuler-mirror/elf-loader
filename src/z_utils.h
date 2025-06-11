@@ -10,6 +10,7 @@
 
 void	*z_memset(void *s, int c, size_t n);
 void	*z_memcpy(void *dest, const void *src, size_t n);
+int	z_memcmp(const void *s1, const void *s2, size_t n);
 char	*z_strncpy(char *dest, const char *src, size_t n);
 char	*z_getenv(const char *name);
 size_t	z_strlen(const char *str);

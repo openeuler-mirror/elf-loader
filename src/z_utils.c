@@ -17,6 +17,18 @@ void *z_memcpy(void *dest, const void *src, size_t n)
 	return dest;
 }
 
+int z_memcmp(const void *s1, const void *s2, size_t n)
+{
+	const unsigned char *p1 = s1, *p2 = s2;
+	size_t i;
+
+	for (i = 0; i < n; i++) {
+		if (p1[i] != p2[i])
+			return p1[i] - p2[i];
+	}
+	return 0;
+}
+
 char *z_strncpy(char *dest, const char *src, size_t n)
 {
 	size_t i;
