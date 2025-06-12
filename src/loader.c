@@ -449,10 +449,12 @@ static void determine_file_and_osroot(const char **elf_file, const char **osroot
         auto_detect_paths();
         *osroot_to_use = auto_detected_osroot;
         *elf_file = auto_detected_target;
+        debug("using auto-detected paths: osroot=%s, elf_file=%s\n", *osroot_to_use, *elf_file);
     } else {
         // Placeholders have been modified by binary edit tool
         *osroot_to_use = epkg_env_osroot;
         *elf_file = target_elf_path;
+        debug("using placeholder paths: osroot=%s, elf_file=%s\n", *osroot_to_use, *elf_file);
     }
 
     if (**elf_file == '\0') {
@@ -469,15 +471,15 @@ static void setup_auxv(Elf_auxv_t *av, unsigned long *base, Elf_Ehdr *ehdrs, uns
     /* Reassign some vectors that are important for
      * the dynamic linker and for lib C. */
 #define AVSET(t, v, expr) case (t): (v)->a_un.a_val = (expr); break
-    while (av->a_type != AT_NULL) {
+
+    while (av && av->a_type != AT_NULL) {
         switch (av->a_type) {
         AVSET(AT_PHDR, av, base[Z_PROG] + ehdrs[Z_PROG].e_phoff);
         AVSET(AT_PHNUM, av, ehdrs[Z_PROG].e_phnum);
         AVSET(AT_PHENT, av, ehdrs[Z_PROG].e_phentsize);
         AVSET(AT_ENTRY, av, entry[Z_PROG]);
-        AVSET(AT_EXECFN, av, (unsigned long)argv[1]);
-        AVSET(AT_BASE, av, elf_interp ?
-                base[Z_INTERP] : av->a_un.a_val);
+        AVSET(AT_EXECFN, av, (unsigned long)argv[0]); /* Use argv[0] instead of argv[1] */
+        AVSET(AT_BASE, av, elf_interp ? base[Z_INTERP] : av->a_un.a_val);
         }
         ++av;
     }
@@ -543,8 +545,9 @@ static void load_and_execute_elf(const char *file, char **argv, unsigned long *s
     }
 
     setup_auxv(av, base, ehdrs, entry, elf_interp, argv);
-    ++av;
+    // Don't increment av here, it's already handled in setup_auxv
 
+    debug("jumping to entry point %p\n", (void*)(elf_interp ? entry[Z_INTERP] : entry[Z_PROG]));
     z_trampo((void (*)(void))(elf_interp ?
             entry[Z_INTERP] : entry[Z_PROG]), sp, z_fini);
     /* Should not reach. */
