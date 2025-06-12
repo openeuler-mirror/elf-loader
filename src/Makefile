@@ -85,7 +85,7 @@ endif
 # Build mode flags ------------------------------------------------------------
 
 ifdef DEBUG
-  CFLAGS += -O0 -ggdb3
+  CFLAGS += -O0 -ggdb3 -DDEBUG
   ASFLAGS += -g
 else
   CFLAGS += -fvisibility=hidden -Os

@@ -4,6 +4,13 @@
 #include "z_elf.h"
 #include "z_epkg.h"
 
+/* Debug output function that only prints when DEBUG is defined */
+#ifdef DEBUG
+#define debug(fmt, ...) z_printf(fmt, ##__VA_ARGS__)
+#else
+#define debug(fmt, ...) do {} while(0)
+#endif
+
 /* Auxiliary vector entry structure */
 struct auxv_entry {
     unsigned long a_type;
@@ -35,7 +42,7 @@ static char auto_detected_osroot[PATH_BUF_SIZE];
 static char auto_detected_target[PATH_BUF_SIZE];
 
 /* Get the path of the current executable */
-static void get_executable_path(const char *argv0, char *exec_path, size_t path_size)
+static void get_executable_path(char *exec_path, size_t path_size)
 {
     ssize_t len;
     size_t i;
@@ -45,26 +52,39 @@ static void get_executable_path(const char *argv0, char *exec_path, size_t path_
         exec_path[i] = '\0';
     }
 
-    // Get the path of the current executable ($0)
+    // Get the path of the current executable from /proc/self/exe
     len = z_readlink("/proc/self/exe", exec_path, path_size - 1);
     if (len == -1) {
-        // Fall back to argv[0] if readlink fails
-        len = 0;
-        while (argv0[len] && (size_t)len < (path_size - 1)) {
-            exec_path[len] = argv0[len];
-            len++;
-        }
+        // If readlink fails, we can't proceed
+        z_errx(1, "failed to read /proc/self/exe");
     }
     exec_path[len] = '\0';
 }
 
-/* Detect osroot from executable path */
+/**
+ * Detect OS root directory from executable path
+ *
+ * Rules:
+ * 1. Extract directory path from executable path (e.g., "$env_root/usr/ebin" from "$env_root/usr/ebin/jq")
+ * 2. Remove "/ebin" suffix if present (e.g., "$env_root/usr/ebin" -> "$env_root/usr")
+ * 3. Remove "/usr" suffix if present (e.g., "$env_root/usr" -> "$env_root")
+ * 4. The result is the OS root directory
+ *
+ * Example:
+ * - Executable: "$env_root/usr/ebin/jq"
+ * - Directory path: "$env_root/usr/ebin"
+ * - After removing "/ebin": "$env_root/usr"
+ * - After removing "/usr": "$env_root"
+ * - OS root: "$env_root"
+ */
 static void detect_osroot(const char *exec_path)
 {
     char base_path[PATH_BUF_SIZE];
     char *base_path_end;
     ssize_t len;
     int i;
+
+    debug("detect_osroot: exec_path = %s\n", exec_path);
 
     // Clear buffer
     for (i = 0; i < PATH_BUF_SIZE; i++) {
@@ -90,11 +110,14 @@ static void detect_osroot(const char *exec_path)
     }
     *base_path_end = '\0';
 
+    debug("detect_osroot: base_path (before ebin check) = %s\n", base_path);
+
     // Check if path ends with "/ebin" and remove it
     len = base_path_end - base_path;
     if (len >= 5 && z_memcmp(base_path + len - 5, "/ebin", 5) == 0) {
         base_path[len - 5] = '\0';
         base_path_end = base_path + len - 5;
+        debug("detect_osroot: removed /ebin, new base_path = %s\n", base_path);
     }
 
     // For epkg_env_osroot: base_path.trim("/usr")
@@ -105,28 +128,46 @@ static void detect_osroot(const char *exec_path)
             auto_detected_osroot[i] = base_path[i];
         }
         auto_detected_osroot[len - 4] = '\0';
+        debug("detect_osroot: removed /usr, osroot = %s\n", auto_detected_osroot);
     } else {
         // Copy the whole base_path if it doesn't end with "/usr"
         for (i = 0; i < len; i++) {
             auto_detected_osroot[i] = base_path[i];
         }
         auto_detected_osroot[len] = '\0';
+        debug("detect_osroot: no /usr found, osroot = %s\n", auto_detected_osroot);
     }
 }
 
-/* Detect target ELF path through symlinks */
-static void detect_target_path(const char *argv0, const char *exec_path)
+/*
+ * Detect target ELF path through symlinks
+ *
+ * Rules:
+ * 1. Extract filename from executable path (e.g., "jq" from "$env_root/usr/ebin/jq")
+ * 2. Get base directory by removing "/ebin" if present (e.g., "$env_root/usr/ebin" -> "$env_root/usr")
+ * 3. Try symlink1: base_path + "/bin/" + filename (e.g., "$env_root/usr/bin/jq")
+ * 4. If symlink1 fails, try symlink2: base_path + "/ebin/." + filename (e.g., "$env_root/usr/ebin/.jq")
+ *
+ * Example:
+ * - Executable: "$env_root/usr/ebin/jq"
+ * - Filename: "jq"
+ * - Base path: "$env_root/usr" (after removing "/ebin")
+ * - Try symlink1: "$env_root/usr/bin/jq" -> readlink to get target
+ * - Try symlink2: "$env_root/usr/ebin/.jq" -> readlink to get target
+ */
+static void detect_target_path(const char *exec_path)
 {
     char base_path[PATH_BUF_SIZE];
     char *base_path_end;
     char symlink1_path[PATH_BUF_SIZE];
     char symlink2_path[PATH_BUF_SIZE];
     char filename[64];
-    const char *argv0_filename = argv0;
-    const char *last_slash = argv0;
-    const char *argv0_dir_end;
+    const char *exec_filename;
+    const char *last_slash;
     ssize_t len;
     size_t i;
+
+    debug("detect_target_path: exec_path = %s\n", exec_path);
 
     // Clear buffer
     for (i = 0; i < PATH_BUF_SIZE; i++) {
@@ -152,34 +193,50 @@ static void detect_target_path(const char *argv0, const char *exec_path)
     }
     *base_path_end = '\0';
 
+    debug("detect_target_path: base_path (before ebin check) = %s\n", base_path);
+
     // Check if path ends with "/ebin" and remove it
     len = base_path_end - base_path;
     if (len >= 5 && z_memcmp(base_path + len - 5, "/ebin", 5) == 0) {
         base_path[len - 5] = '\0';
         base_path_end = base_path + len - 5;
+        debug("detect_target_path: removed /ebin, new base_path = %s\n", base_path);
     }
 
-    // Find the filename part of argv0
+    // Extract filename from exec_path
+    exec_filename = exec_path;
+    last_slash = exec_path;
     while (*last_slash) {
         if (*last_slash == '/') {
-            argv0_filename = last_slash + 1;
+            exec_filename = last_slash + 1;
         }
         last_slash++;
     }
 
     // Copy filename
     i = 0;
-    while (argv0_filename[i] && i < (sizeof(filename) - 1)) {
-        filename[i] = argv0_filename[i];
+    while (exec_filename[i] && i < (sizeof(filename) - 1)) {
+        filename[i] = exec_filename[i];
         i++;
     }
     filename[i] = '\0';
 
-    // Construct symlink1 path: base_path + "/" + filename
+    debug("detect_target_path: extracted filename = %s\n", filename);
+
+    // Construct symlink1 path: base_path + "/bin/" + filename
     len = base_path_end - base_path;
     for (i = 0; i < (size_t)len; i++) {
         symlink1_path[i] = base_path[i];
     }
+    // Add "/bin/" to the path
+    symlink1_path[len] = '/';
+    len++;
+    symlink1_path[len] = 'b';
+    len++;
+    symlink1_path[len] = 'i';
+    len++;
+    symlink1_path[len] = 'n';
+    len++;
     symlink1_path[len] = '/';
     len++;
     i = 0;
@@ -190,26 +247,36 @@ static void detect_target_path(const char *argv0, const char *exec_path)
     }
     symlink1_path[len] = '\0';
 
+    debug("detect_target_path: trying symlink1 = %s\n", symlink1_path);
+
     // Try to readlink symlink1
     len = z_readlink(symlink1_path, auto_detected_target, sizeof(auto_detected_target) - 1);
     if (len != -1) {
         auto_detected_target[len] = '\0';
+        debug("detect_target_path: symlink1 SUCCESS, target = %s\n", auto_detected_target);
         return;
     }
+    debug("detect_target_path: symlink1 failed\n");
 
-    // Fall back to symlink2: dirname(argv0) + "/." + filename(argv0)
-    argv0_dir_end = argv0 + z_strlen(argv0);
-
-    // Find the directory part of argv0
-    while (argv0_dir_end > argv0 && *(argv0_dir_end - 1) != '/') {
-        argv0_dir_end--;
-    }
-
-    // Copy directory part
-    len = argv0_dir_end - argv0;
+    // Fall back to symlink2: base_path + "/ebin/." + filename
+    len = base_path_end - base_path;
     for (i = 0; i < (size_t)len && i < (sizeof(symlink2_path) - 1); i++) {
-        symlink2_path[i] = argv0[i];
+        symlink2_path[i] = base_path[i];
     }
+
+    // Add "/ebin/" to the path
+    symlink2_path[len] = '/';
+    len++;
+    symlink2_path[len] = 'e';
+    len++;
+    symlink2_path[len] = 'b';
+    len++;
+    symlink2_path[len] = 'i';
+    len++;
+    symlink2_path[len] = 'n';
+    len++;
+    symlink2_path[len] = '/';
+    len++;
 
     // Add "." prefix to filename
     if ((size_t)len < sizeof(symlink2_path) - 1) {
@@ -226,24 +293,28 @@ static void detect_target_path(const char *argv0, const char *exec_path)
     }
     symlink2_path[len] = '\0';
 
+    debug("detect_target_path: trying symlink2 = %s\n", symlink2_path);
+
     // Try to readlink symlink2
     len = z_readlink(symlink2_path, auto_detected_target, sizeof(auto_detected_target) - 1);
     if (len != -1) {
         auto_detected_target[len] = '\0';
+        debug("detect_target_path: symlink2 SUCCESS, target = %s\n", auto_detected_target);
     } else {
-        // Final fallback: use argv[1] if available
+        // Final fallback: empty target
         auto_detected_target[0] = '\0';
+        debug("detect_target_path: symlink2 failed\n");
     }
 }
 
 /* Auto-detect paths when placeholders are not modified by binary edit tool */
-static void auto_detect_paths(const char *argv0)
+static void auto_detect_paths(void)
 {
     char exec_path[PATH_BUF_SIZE];
 
-    get_executable_path(argv0, exec_path, sizeof(exec_path));
+    get_executable_path(exec_path, sizeof(exec_path));
     detect_osroot(exec_path);
-    detect_target_path(argv0, exec_path);
+    detect_target_path(exec_path);
 }
 
 /* Initialize page_size by reading from auxv */
@@ -370,12 +441,12 @@ static void initialize_environment(unsigned long *sp, char ***argv, char ***env,
 }
 
 /* Determine elf_file to execute and osroot to use */
-static void determine_file_and_osroot(char **argv, const char **elf_file, const char **osroot_to_use)
+static void determine_file_and_osroot(const char **elf_file, const char **osroot_to_use)
 {
     // Check if placeholders are still untouched and auto-detect if needed
-    if (epkg_env_osroot[0] == '{' && z_memcmp(epkg_env_osroot, "{{SOURCE_ENV_DIR LONG0 LONG1", 29) == 0) {
+    if (epkg_env_osroot[0] == '{' && z_memcmp(epkg_env_osroot, "{{SOURCE_ENV_DIR LONG0 LONG1", 28) == 0) {
         // Placeholders are untouched, auto-detect paths
-        auto_detect_paths(argv[0]);
+        auto_detect_paths();
         *osroot_to_use = auto_detected_osroot;
         *elf_file = auto_detected_target;
     } else {
@@ -384,11 +455,11 @@ static void determine_file_and_osroot(char **argv, const char **elf_file, const 
         *elf_file = target_elf_path;
     }
 
-    if (**osroot_to_use == '\0' || **osroot_to_use == '{') {
-        z_errx(1, "no epkg_env_osroot");
-    }
-    if (**elf_file == '\0' || **elf_file == '{') {
+    if (**elf_file == '\0') {
         z_errx(1, "no target_elf_path");
+    }
+    if (**osroot_to_use == '\0') {
+        z_errx(1, "no epkg_env_osroot");
     }
 }
 
@@ -494,7 +565,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
     initialize_environment(sp, &argv, &env, &av, &argc);
 
     // Determine elf_file to execute and osroot to use
-    determine_file_and_osroot(argv, &elf_file, &osroot_to_use);
+    determine_file_and_osroot(&elf_file, &osroot_to_use);
 
     // Mount the epkg root
     mount_os_root(osroot_to_use);
