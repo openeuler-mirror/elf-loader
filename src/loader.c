@@ -384,11 +384,11 @@ static void determine_file_and_osroot(char **argv, const char **elf_file, const 
         *elf_file = target_elf_path;
     }
 
-    if (**elf_file == '\0') {
-        z_errx(1, "no target_elf_path");
-    }
-    if (**osroot_to_use == '\0') {
+    if (**osroot_to_use == '\0' || **osroot_to_use == '{') {
         z_errx(1, "no epkg_env_osroot");
+    }
+    if (**elf_file == '\0' || **elf_file == '{') {
+        z_errx(1, "no target_elf_path");
     }
 }
 
@@ -497,7 +497,7 @@ void z_entry(unsigned long *sp, void (*fini)(void))
     determine_file_and_osroot(argv, &elf_file, &osroot_to_use);
 
     // Mount the epkg root
-    mount_epkg_root(osroot_to_use, elf_file);
+    mount_os_root(osroot_to_use);
 
     // Load and execute ELF
     load_and_execute_elf(elf_file, argv, sp, av);

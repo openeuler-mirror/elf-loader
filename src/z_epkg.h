@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void mount_epkg_root(const char *os_root, const char *cmd);
+void mount_os_root(const char *os_root);
 
 #endif /* Z_EPKG_H */
 

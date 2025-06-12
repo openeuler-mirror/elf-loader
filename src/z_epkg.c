@@ -152,39 +152,3 @@ void mount_os_root(char *os_root)
 	mount_os_dir(os_root_copy, pend, "/var");
 	mount_opt(os_root);
 }
-
-// set os_root based on cmd
-char* find_osroot(char* buf, const char *cmd)
-{
-        const char *p;
-
-        if (cmd[0] != '/')
-                die("XXX: only support full path CMD for now");
-
-        p = z_strstr(cmd, "/usr/");
-        if (!p)
-                p = z_strstr(cmd, "/opt/");
-        if (!p)
-                p = z_strstr(cmd, "/bin/");
-        if (!p)
-                p = z_strstr(cmd, "/sbin/");
-        if (!p)
-                die("cannot find usr/bin in command");
-        if (p - cmd >= OSROOT_BUF_SIZE - 6)
-                die("os_root buffer too small");
-
-        z_strncpy(buf, cmd, p - cmd + 1);
-        return buf;
-}
-
-void mount_epkg_root(const char *os_root, const char *cmd)
-{
-	char buf[OSROOT_BUF_SIZE];
-
-	if (os_root[0] == '{')
-		find_osroot(buf, cmd);
-	else
-		z_strncpy(buf, os_root, OSROOT_BUF_SIZE);
-
-	mount_os_root(buf);
-}
