@@ -49,7 +49,7 @@ void mount_opt(char *os_root)
 	z_strncpy(os_opt + os_root_len, "/opt", 5);
 
 	z_strncpy(opt_real_path, os_root, 100);
-	z_strncpy(opt_real_path + os_root_len, "/opt_real", 9);
+	z_strncpy(opt_real_path + os_root_len, "/opt_real", 10);
 
 	// First check if /opt/epkg exists
 	int opt_epkg_fd = z_open(opt_epkg_path, O_RDONLY);
