@@ -38,7 +38,7 @@ static char auto_detected_target[PATH_BUF_SIZE];
 static void get_executable_path(const char *argv0, char *exec_path, size_t path_size)
 {
     ssize_t len;
-    int i;
+    size_t i;
 
     // Clear buffer
     for (i = 0; i < path_size; i++) {
@@ -50,7 +50,7 @@ static void get_executable_path(const char *argv0, char *exec_path, size_t path_
     if (len == -1) {
         // Fall back to argv[0] if readlink fails
         len = 0;
-        while (argv0[len] && len < path_size - 1) {
+        while (argv0[len] && (size_t)len < (path_size - 1)) {
             exec_path[len] = argv0[len];
             len++;
         }
@@ -74,7 +74,7 @@ static void detect_osroot(const char *exec_path)
 
     // Copy exec_path to working buffer
     len = 0;
-    while (exec_path[len] && len < sizeof(base_path) - 1) {
+    while (exec_path[len] && len < (ssize_t)(sizeof(base_path) - 1)) {
         base_path[len] = exec_path[len];
         len++;
     }
@@ -126,7 +126,7 @@ static void detect_target_path(const char *argv0, const char *exec_path)
     const char *last_slash = argv0;
     const char *argv0_dir_end;
     ssize_t len;
-    int i;
+    size_t i;
 
     // Clear buffer
     for (i = 0; i < PATH_BUF_SIZE; i++) {
@@ -136,7 +136,7 @@ static void detect_target_path(const char *argv0, const char *exec_path)
 
     // Copy exec_path to working buffer and get base path
     len = 0;
-    while (exec_path[len] && len < sizeof(base_path) - 1) {
+    while (exec_path[len] && (size_t)len < (sizeof(base_path) - 1)) {
         base_path[len] = exec_path[len];
         len++;
     }
@@ -169,7 +169,7 @@ static void detect_target_path(const char *argv0, const char *exec_path)
 
     // Copy filename
     i = 0;
-    while (argv0_filename[i] && i < sizeof(filename) - 1) {
+    while (argv0_filename[i] && i < (sizeof(filename) - 1)) {
         filename[i] = argv0_filename[i];
         i++;
     }
@@ -177,13 +177,13 @@ static void detect_target_path(const char *argv0, const char *exec_path)
 
     // Construct symlink1 path: base_path + "/" + filename
     len = base_path_end - base_path;
-    for (i = 0; i < len; i++) {
+    for (i = 0; i < (size_t)len; i++) {
         symlink1_path[i] = base_path[i];
     }
     symlink1_path[len] = '/';
     len++;
     i = 0;
-    while (filename[i] && len < sizeof(symlink1_path) - 1) {
+    while (filename[i] && (size_t)len < (sizeof(symlink1_path) - 1)) {
         symlink1_path[len] = filename[i];
         len++;
         i++;
@@ -207,19 +207,19 @@ static void detect_target_path(const char *argv0, const char *exec_path)
 
     // Copy directory part
     len = argv0_dir_end - argv0;
-    for (i = 0; i < len && i < sizeof(symlink2_path) - 1; i++) {
+    for (i = 0; i < (size_t)len && i < (sizeof(symlink2_path) - 1); i++) {
         symlink2_path[i] = argv0[i];
     }
 
     // Add "." prefix to filename
-    if (len < sizeof(symlink2_path) - 1) {
+    if ((size_t)len < sizeof(symlink2_path) - 1) {
         symlink2_path[len] = '.';
         len++;
     }
 
     // Add filename
     i = 0;
-    while (filename[i] && len < sizeof(symlink2_path) - 1) {
+    while (filename[i] && (size_t)len < (sizeof(symlink2_path) - 1)) {
         symlink2_path[len] = filename[i];
         len++;
         i++;
@@ -384,10 +384,10 @@ static void determine_file_and_osroot(char **argv, const char **elf_file, const 
         *elf_file = target_elf_path;
     }
 
-    if (elf_file[0] == '\0') {
+    if (**elf_file == '\0') {
         z_errx(1, "no target_elf_path");
     }
-    if (osroot_to_use[0] == '\0') {
+    if (**osroot_to_use == '\0') {
         z_errx(1, "no epkg_env_osroot");
     }
 }

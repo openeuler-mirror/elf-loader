@@ -177,7 +177,7 @@ char* find_osroot(char* buf, const char *cmd)
         return buf;
 }
 
-void mount_epkg_root(char *os_root, const char *cmd)
+void mount_epkg_root(const char *os_root, const char *cmd)
 {
 	char buf[OSROOT_BUF_SIZE];
 
