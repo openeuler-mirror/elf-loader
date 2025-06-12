@@ -50,7 +50,7 @@ return_type z_##name(param1_type param1, param2_type param2, param3_type param3,
 DEF_SYSCALL3(int, openat, int, dirfd, const char *, filename, int, flags)
 DEF_SYSCALL3(ssize_t, read, int, fd, void *, buf, size_t, count)
 DEF_SYSCALL3(ssize_t, write, int, fd, const void *, buf, size_t, count)
-DEF_SYSCALL3(ssize_t, readlink, const char *, pathname, char *, buf, size_t, bufsiz)
+/* readlink is implemented using readlinkat below */
 DEF_SYSCALL1(int, close, int, fd)
 DEF_SYSCALL3(int, lseek, int, fd, off_t, off, int, whence)
 DEF_SYSCALL1(int, exit, int, status)
@@ -65,6 +65,11 @@ DEF_SYSCALL0(ssize_t, geteuid)
 int z_open(const char * filename, int flags)
 {
 	return z_openat(AT_FDCWD, filename, flags);
+}
+
+ssize_t z_readlink(const char *pathname, char *buf, size_t bufsiz)
+{
+	return (ssize_t)SYSCALL(readlinkat, AT_FDCWD, pathname, buf, bufsiz);
 }
 
 void *

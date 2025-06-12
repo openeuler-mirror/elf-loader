@@ -8,6 +8,9 @@ void *z_memset(void *s, int c, size_t n)
 	return s;
 }
 
+/* Alias for standard memset to avoid undefined reference errors */
+void *memset(void *s, int c, size_t n) __attribute__((alias("z_memset")));
+
 void *z_memcpy(void *dest, const void *src, size_t n)
 {
 	unsigned char *d = dest;
