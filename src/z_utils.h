@@ -8,6 +8,13 @@
 
 #define z_alloca	__builtin_alloca
 
+/* Debug output function that only prints when DEBUG is defined */
+#ifdef DEBUG
+#define debug(fmt, ...) z_printf(fmt, ##__VA_ARGS__)
+#else
+#define debug(fmt, ...) do {} while(0)
+#endif
+
 void	*z_memset(void *s, int c, size_t n);
 void	*z_memcpy(void *dest, const void *src, size_t n);
 int	z_memcmp(const void *s1, const void *s2, size_t n);

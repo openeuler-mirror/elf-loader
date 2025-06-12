@@ -4,13 +4,6 @@
 #include "z_elf.h"
 #include "z_epkg.h"
 
-/* Debug output function that only prints when DEBUG is defined */
-#ifdef DEBUG
-#define debug(fmt, ...) z_printf(fmt, ##__VA_ARGS__)
-#else
-#define debug(fmt, ...) do {} while(0)
-#endif
-
 /* Auxiliary vector entry structure */
 struct auxv_entry {
     unsigned long a_type;

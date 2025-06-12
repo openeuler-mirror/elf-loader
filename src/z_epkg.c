@@ -29,8 +29,6 @@ void do_mount(char *src, char *dst)
 {
 	if (z_mount(src, dst, "", MS_BIND, NULL) == -1)
 		z_printf("mount %s to %s failed\n", src, dst);
-	//else
-	//	z_printf("mount %s to %s success\n", src, dst);
 }
 
 void mount_opt(char *os_root)
@@ -64,23 +62,18 @@ void mount_opt(char *os_root)
 		}
 
 		// Step 2: Bind mount /opt/epkg to os_root/opt_real
-		/* z_printf("Bind mounting %s to %s\n", opt_epkg_path, opt_real_path); */
+		debug("Bind mounting %s to %s\n", opt_epkg_path, opt_real_path);
 		do_mount(opt_epkg_path, opt_real_path);
 	}
 
 	// Step 3: Mount environment /opt directory
-	/* z_printf("Bind mounting %s to %s\n", os_opt, "/opt"); */
+	debug("Bind mounting %s to %s\n", os_opt, "/opt");
 	do_mount(os_opt, "/opt");
 
 	// Step 4: If /opt/epkg existed, bind mount opt_real back to /opt/epkg
 	if (opt_epkg_fd >= 0) {
-		// Check if opt_real_path exists
-		int opt_real_fd = z_open(opt_real_path, O_RDONLY);
-		if (opt_real_fd >= 0) {
-			z_close(opt_real_fd);
-			/* z_printf("Bind mounting %s to %s\n", opt_real_path, opt_epkg_path); */
-			do_mount(opt_real_path, opt_epkg_path);
-		}
+            debug("Bind mounting %s to %s\n", opt_real_path, opt_epkg_path);
+            do_mount(opt_real_path, opt_epkg_path);
 	}
 }
 
