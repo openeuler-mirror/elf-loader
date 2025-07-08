@@ -11,6 +11,7 @@
 #define z_errno	(*z_perrno())
 
 int	z_exit(int status);
+int 	z_mkdir(const char *pathname, int mode);
 int	z_open(const char *pathname, int flags);
 int	z_openat(int dirfd, const char *pathname, int flags);
 int	z_close(int fd);

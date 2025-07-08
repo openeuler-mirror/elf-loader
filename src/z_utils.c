@@ -79,6 +79,21 @@ int z_strcmp(const char *x, const char *y)
     return *(const unsigned char*)x - *(const unsigned char*)y;
 }
 
+int z_strncmp(const char *s1, const char *s2, size_t n) {
+    while (n > 0) {
+        if (*s1 != *s2) {
+            return (unsigned char)*s1 - (unsigned char)*s2;
+        }
+        if (*s1 == '\0') {
+            return 0;
+        }
+        s1++;
+        s2++;
+        n--;
+    }
+    return 0;
+}
+
 extern char **z_environ;
 
 char *z_getenv(const char *name)
@@ -133,5 +148,18 @@ const char* z_strstr(const char* x, const char* y)
         x++;
     }
 
+    return NULL;
+}
+
+const char *z_strchr(const char *s, int c) {
+    while (*s != '\0') {
+        if (*s == c) {
+            return s;
+        }
+        s++;
+    }
+    if (c == '\0') {
+        return s;
+    }
     return NULL;
 }

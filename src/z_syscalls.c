@@ -1,4 +1,5 @@
 #include <syscall.h>
+#include <fcntl.h>
 
 #include "z_asm.h"
 #include "z_syscalls.h"
@@ -86,3 +87,6 @@ z_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 #endif
 }
 
+int z_mkdir(const char *pathname, int mode) {
+    return z_syscall(__NR_mkdirat, AT_FDCWD, (long)pathname, (long)mode, 0, 0, 0);
+}

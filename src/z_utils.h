@@ -22,7 +22,9 @@ char	*z_strncpy(char *dest, const char *src, size_t n);
 char	*z_getenv(const char *name);
 size_t	z_strlen(const char *str);
 int	z_strcmp(const char *x, const char *y);
-const char* z_strstr(const char* x, const char* y);
+int 	z_strncmp(const char *s1, const char *s2, size_t n);
+const char *z_strstr(const char *x, const char* y);
+const char *z_strchr(const char *s, int c);
 
 void	z_vprintf(const char *fmt, va_list ap);
 void	z_vfdprintf(int fd, const char *fmt, va_list ap);
