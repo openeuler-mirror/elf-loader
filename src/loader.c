@@ -3,6 +3,7 @@
 #include "z_utils.h"
 #include "z_elf.h"
 #include "z_epkg.h"
+#include "version.h"
 
 /* Auxiliary vector entry structure */
 struct auxv_entry {
@@ -416,6 +417,38 @@ err:
 #define Z_PROG		0
 #define Z_INTERP	1
 
+/* Check if program name starts with 'elf-loader' and handle --version */
+static int check_version_request(char **argv, int argc)
+{
+    if (argc != 2)
+        return 0;
+    if (z_strcmp(argv[1], "--version") != 0)
+        return 0;
+
+    const char *prog_name = argv[0];
+    const char *basename = prog_name;
+
+    // Find the last '/' to get basename
+    for (const char *p = prog_name; *p; p++) {
+        if (*p == '/') {
+            basename = p + 1;
+        }
+    }
+
+    // Check if basename starts with 'elf-loader'
+    const char *prefix = "elf-loader";
+    for (int i = 0; prefix[i]; i++) {
+        if (basename[i] != prefix[i]) {
+            return 0;
+        }
+    }
+
+    z_printf("elf-loader version %s (build date %s, commit %s)\n",
+             VERSION_TAG, BUILD_DATE, GIT_HASH);
+    z_exit(0);
+    return 0;
+}
+
 /* Initialize environment and parse arguments */
 static void initialize_environment(unsigned long *sp, char ***argv, char ***env, Elf_auxv_t **av, int *argc)
 {
@@ -559,6 +592,9 @@ void z_entry(unsigned long *sp, void (*fini)(void))
 
     // Initialize environment and parse arguments
     initialize_environment(sp, &argv, &env, &av, &argc);
+
+    // Check for --version request
+    check_version_request(argv, argc);
 
     // Determine elf_file to execute and osroot to use
     determine_file_and_osroot(&elf_file, &osroot_to_use);

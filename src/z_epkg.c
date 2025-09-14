@@ -19,16 +19,10 @@
 
 #define OSROOT_BUF_SIZE 1024
 
-static void die(const char *msg)
-{
-        z_fdprintf(2, "%s\n", msg);
-        z_exit(1);
-}
-
 void do_mount(char *src, char *dst)
 {
 	if (z_mount(src, dst, "", MS_BIND, NULL) == -1)
-		z_printf("mount %s to %s failed\n", src, dst);
+		z_errx(1, "mount %s to %s failed\n", src, dst);
 }
 
 /*
@@ -188,8 +182,8 @@ void set_fd_id(char* fd_path, ssize_t id){
 
 	int map_fd = z_open(fd_path, O_WRONLY);
 	if (map_fd < 0) {
-			z_printf("open %s failed: %d\n",fd_path, z_errno);
-			die("open failed");
+			z_errx(1, "open %s failed: %d\n",fd_path, z_errno);
+			z_exit(1);
 	}
 	// z_fdprintf(uid_map_fd, "0 %ul 1", id);
 	char *p;
@@ -209,8 +203,8 @@ void set_fd_id(char* fd_path, ssize_t id){
 void set_map(ssize_t uid, ssize_t gid){
 	int groups_fd = z_open("/proc/self/setgroups", O_WRONLY | O_TRUNC);
 	if (groups_fd < 0) {
-		z_printf("open /proc/self/setgroups failed: %d\n", z_errno);
-		die("open /proc/self/setgroups failed");
+		z_errx(1, "open /proc/self/setgroups failed: %d\n", z_errno);
+		z_exit(1);
 	}
 	z_write(groups_fd, "deny", 4);
 	z_close(groups_fd);

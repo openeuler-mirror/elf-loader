@@ -48,14 +48,14 @@ z_printf(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	kdoprnt(2, fmt, ap);
+	kdoprnt(1, fmt, ap);
 	va_end(ap);
 }
 
 void
 z_vprintf(const char *fmt, va_list ap)
 {
-	kdoprnt(2, fmt, ap);
+	kdoprnt(1, fmt, ap);
 }
 
 void
